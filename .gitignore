@@ -1,0 +1,19 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest cache
+.pytest_cache/
+
+# OS / Editor temporary files
+.DS_Store
+*.swp
+*.swo
+*~
+.~lock.*
+
+# Virtual environments
+venv/
+env/
+.env
