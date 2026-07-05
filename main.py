@@ -45,12 +45,28 @@ def main() -> None:
         default=Path("surveillance_alerts.log"),
         help="Path to save output logs (default: surveillance_alerts.log)",
     )
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Enable terminal dashboard (Box 1: header + alerts).",
+    )
     args = parser.parse_args()
 
     base = Path(__file__).resolve().parent
     log_path = args.log_file if args.log_file.is_absolute() else base / args.log_file
 
     setup_logging(log_path)
+
+    if args.demo:
+        # Suppress console logging in demo mode so the UI renders cleanly.
+        # Logs still go to the file handler.
+        root_logger = logging.getLogger("surveillance")
+        root_logger.handlers = [
+            h for h in root_logger.handlers
+            if not isinstance(h, logging.StreamHandler)
+            or isinstance(h, logging.FileHandler)
+        ]
+
     logger.info("Starting Short-Sell Surveillance Engine...")
     logger.info("Logging output to file: %s", log_path)
 
@@ -62,13 +78,63 @@ def main() -> None:
 
     engine = SurveillanceEngine(ref_data)
 
-    alert_count = 0
-    for row in orders:
-        alert = engine.process_event(row)
-        if alert is not None:
-            alert_count += 1
+    if args.demo:
+        # ── Live terminal dashboard mode ─────────────────────────
+        from surveillance.terminal_ui import TerminalUI
 
-    logger.info("Surveillance complete. %d alert(s) raised across %d events.", alert_count, len(orders))
+        ui = TerminalUI()
+        ui.open_header(symbol_count=len(ref_data), total_events=len(orders))
+
+        # Event details go to a separate log file.
+        details_path = base / "event_details.log"
+        alert_count = 0
+
+        with open(details_path, "w", encoding="utf-8") as details:
+            details.write(f"{'#':>7}  {'Timestamp':<10}  {'Event':<14}  "
+                          f"{'Symbol':<8}  {'Side':<5}  {'OrderID':<12}  "
+                          f"{'Qty':>8}  {'Net Pos':>12}  {'Wk Long':>8}  "
+                          f"{'Wk Short':>9}  {'Borrow':>12}\n")
+            details.write("─" * 120 + "\n")
+
+            for i, row in enumerate(orders, 1):
+                alert = engine.process_event(row)
+
+                # Write event details to the log file.
+                symbol = row.get("symbol", "")
+                state = engine.states.get(symbol)
+                net_pos = state.net_position if state else 0
+                wk_long = state.working_long_sell_qty if state else 0
+                wk_short = state.working_short_sell_qty if state else 0
+                borrow = state.borrow if state else 0
+
+                details.write(
+                    f"{i:>7}  {row.get('timestamp', ''):<10}  "
+                    f"{row.get('event', ''):<14}  {symbol:<8}  "
+                    f"{row.get('side', ''):<5}  "
+                    f"{row.get('client_order_id', ''):<12}  "
+                    f"{row.get('qty', ''):>8}  {net_pos:>12,}  "
+                    f"{wk_long:>8,}  {wk_short:>9,}  {borrow:>12,}\n"
+                )
+
+                if alert is not None:
+                    alert_count += 1
+                    ui.add_alert(alert)
+
+        ui.close_box(alert_count, len(orders))
+        print(f"  Event details saved to: {details_path}")
+        print()
+    else:
+        # ── Standard logging mode (no terminal UI) ───────────────
+        alert_count = 0
+        for row in orders:
+            alert = engine.process_event(row)
+            if alert is not None:
+                alert_count += 1
+
+        logger.info(
+            "Surveillance complete. %d alert(s) raised across %d events.",
+            alert_count, len(orders),
+        )
 
 
 if __name__ == "__main__":

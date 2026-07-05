@@ -15,12 +15,17 @@ A professional, modular Python surveillance engine that replays a day's order ev
 Ensure `ref_data.csv` and `orders.csv` sit in the project root next to `main.py`, then run:
 
 ```bash
+# Standard mode (logs alerts and progress to console and file)
 python3 main.py
+
+# Live Demo mode (clean terminal box for alerts; event details saved to log file)
+python3 main.py --demo
 ```
 
-By default, this prints formatted alerts and execution logs to both your terminal console and a real-time log file (`surveillance_alerts.log`).
+By default (`python3 main.py`), the engine prints formatted alerts and execution logs to both your terminal console and a real-time log file (`surveillance_alerts.log`).
 
 **Optional CLI Arguments:**
+- `--demo`: Enable live terminal dashboard mode. Displays a clean, formatted terminal box (Box 1) with system statistics and real-time alerts, while saving all 132,117 event processing details and state snapshots to a separate log file (`event_details.log`).
 - `--log-file <path>`: Specify a custom path to save output logs (default: `surveillance_alerts.log`).
 
 ### 3. Running Automated Tests
@@ -42,6 +47,7 @@ surveillance/
   flag_rules.py   Pure decision function — "what flag should this sell have?"
   engine.py       Stateful event replay — processes rows, updates state, emits alerts
   alerts.py       Format an Alert into a printable line and log warnings
+  terminal_ui.py  Formatted ASCII dashboard for demo mode (Box 1 display)
 tests/
   test_flag_rules.py   Unit tests for the stateless flag decision logic
   test_engine.py       Unit tests for state mutations, execution types, and alert generation
@@ -97,7 +103,7 @@ The project implements Python's built-in `logging` module with a **hierarchical 
 
 ---
 
-## What I'd Add with More Perfomence
+## What I'd Add with More Performance
 
-- **Performance optimization:** For 130k rows, the current O(n) scans across active orders for working sell quantities take only ~0.3 seconds. At multi-million row scale, I would maintain O(1) running totals for `working_long_sell_qty` and `working_short_sell_qty`.
+- **Performance optimization:** For 130k rows, the current O(n) scans across active orders for working sell quantities take only ~0.3 seconds. At multi-million row scale, I would maintain O(1) running totals for `working_long_sell_qty` and `working_short_sell_qty`. However, in real-world market data feeds where UDP packets can arrive out of order or with timestamp discrepancies, O(1) running counters can drift over time. Maintaining O(n) property-based calculations across active orders ensures state resilience and correctness without risk of drift.
 - **Input validation & schema checks:** Stricter parsing of timestamps, detection of duplicate `client_order_id` values across different symbols, and graceful error handling for malformed CSV rows.
