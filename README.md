@@ -1,32 +1,39 @@
-# Short-Sell Surveillance
+# Short-Sell Surveillance System
 
-A Python program that replays a day's order events and alerts whenever a sell
-order carries the wrong `sell_flag` (`Long` / `Short`).
-
----
-
-## How to run
-
-```bash
-# Ensure ref_data.csv and orders.csv sit next to main.py, then:
-python main.py
-```
-
-No external dependencies are required — the program uses only the Python
-standard library.
-
-## Running tests
-
-```bash
-python -m pytest tests/ -v
-```
-
-> **Note:** `pytest` is the only non-stdlib dependency and is needed solely for
-> running the test suite.
+A professional, modular Python surveillance engine that replays a day's order events and raises real-time alerts whenever a sell order carries an incorrect `sell_flag` (`Long` / `Short` / `0-crossing` / `Uncovered`).
 
 ---
 
-## Architecture
+## How to Run & Environment Setup
+
+### 1. Environment Requirements
+- **Python Version:** `>= 3.8` (Tested on Python 3.10 and 3.12).
+- **Core Engine:** Uses **100% Python Standard Library** (`csv`, `dataclasses`, `logging`, `pathlib`, `argparse`, `typing`). **No external packages or third-party libraries are required to run `main.py`!**
+- **Automated Tests:** See [requirements.txt](file:///home/dasun/Documents/projects/9miles-takehome-assigment/Short-Sell-Surveillance-System/requirements.txt) for the test dependency (`pytest`).
+
+### 2. Running the Surveillance Engine
+Ensure `ref_data.csv` and `orders.csv` sit in the project root next to `main.py`, then run:
+
+```bash
+python3 main.py
+```
+
+By default, this prints formatted alerts and execution logs to both your terminal console and a real-time log file (`surveillance_alerts.log`).
+
+**Optional CLI Arguments:**
+- `--log-file <path>`: Specify a custom path to save output logs (default: `surveillance_alerts.log`).
+
+### 3. Running Automated Tests
+To run the complete suite of 27 automated unit tests across order lifecycle events and short-sell flag rules:
+
+```bash
+pip install -r requirements.txt
+python3 -m pytest tests/ -v
+```
+
+---
+
+## Architecture & Clean Logging
 
 ```
 surveillance/
@@ -34,77 +41,63 @@ surveillance/
   loader.py       CSV readers (ref_data + orders)
   flag_rules.py   Pure decision function — "what flag should this sell have?"
   engine.py       Stateful event replay — processes rows, updates state, emits alerts
-  alerts.py       Format an Alert into a printable line
+  alerts.py       Format an Alert into a printable line and log warnings
 tests/
-  test_flag_rules.py   Unit tests for the flag decision logic
-  test_engine.py       Unit tests for state mutations and alert generation
-main.py           Entry point
+  test_flag_rules.py   Unit tests for the stateless flag decision logic
+  test_engine.py       Unit tests for state mutations, execution types, and alert generation
+main.py           Entry point & root logging configuration
+requirements.txt  Project dependencies and Python version requirements
 ```
 
-**Key design choice:** decision logic (`flag_rules`) is completely separated
-from state management (`engine`).  `flag_rules.determine_expected_flag` is a
-pure function with no side effects — it takes five numbers and returns a string.
-The engine is responsible for knowing *when* to call it and *how* to update
-state.
+### Logging Architecture
+The project implements Python's built-in `logging` module with a **hierarchical tree structure and log propagation**:
+- **Root Configuration (`main.py`):** Configures dual output handlers (`StreamHandler` for stdout and `FileHandler` for `surveillance_alerts.log`).
+- **Module Loggers (`surveillance.engine` & `surveillance.alerts`):** Child modules instantiate their own named loggers without passing logger objects around. Log events automatically propagate up to the root handlers.
+- **Log Levels:**
+  - `INFO`: Used for system startup, symbol loading progress, and final summary statistics.
+  - `WARNING`: Used for emitting mis-flagged short-sell alerts.
+  - `DEBUG`: Available for granular diagnostics and detecting out-of-order network packets.
 
 ---
 
-## Assumptions
+## Key Financial Engineering & Architecture Assumptions
 
 1. **Events are processed in file order.**  
-   The CSV is assumed to be sorted chronologically.  No secondary sorting is
-   applied.
+   The CSV is assumed to be sorted chronologically.
 
 2. **`sell_flag` whitespace is normalised.**  
-   The data contains `'Long '` (trailing space) which is stripped to `'Long'`.
+   The data contains `'Long '` (trailing space) which is cleanly stripped to `'Long'`.
 
 3. **Flag is checked on `New` and `Amend` events only.**  
-   `NewAccept` and `AmendConfirm` are exchange acknowledgements — they update
-   `leaves_qty` but do not trigger flag validation.
+   `NewAccept` and `AmendConfirm` are exchange acknowledgements — they update `leaves_qty` but do not trigger flag validation.
 
-4. **On `New`, the order is added to working orders immediately** (with
-   `leaves_qty = qty`).  
-   This ensures that two rapid-fire sells for the same symbol correctly see each
-   other's commitment.  `NewAccept` will update `leaves_qty` if the exchange
-   assigns a different value.
+4. **On `New`, the order is added to working orders immediately** (with `leaves_qty = qty`).  
+   This ensures that two rapid-fire sells for the same symbol correctly see each other's working commitment.
 
 5. **On `Amend`, the old order is removed *before* checking the new flag.**  
-   This avoids double-counting the commitment.  The new order's `leaves_qty` is
-   set to `qty` and corrected by the subsequent `AmendConfirm`.
+   This avoids double-counting working sell commitments.
 
-6. **`Cancel` is a request — no state change.**  
-   State only changes on `Cancelled` (exchange confirmation), which removes the
-   order.
+6. **`Cancel` and `Cancelled` both remove the referenced order.**  
+   In exchange feeds where cancellation requests and acknowledgements might be grouped or simplified, treating both `Cancel` and `Cancelled` as withdrawing the order ensures working sell commitments are immediately released without leaking inventory.
 
-7. **Missing reference data → position 0, borrow 0.**  
-   A symbol that appears in orders but not in `ref_data.csv` is treated as
-   having zero initial position and zero borrow allowance.  This means any
-   short sell for that symbol would be flagged `Uncovered` — a safe default.
+7. **Missing reference data symbols are skipped.**  
+   Symbols appearing in `orders.csv` that are not present in `ref_data.csv` are safely ignored by the surveillance engine instead of creating default zero-allowance states.
 
-8. **`available_owned = 0` is treated as Short territory.**  
-   When we have exactly zero uncommitted shares, any sell must borrow — it's a
-   Short (or Uncovered if beyond borrow).
+8. **`Fill` (Partial/Incremental) vs. `Filled` (Complete/Terminal) Executions:**  
+   - **`Fill`:** Represents an incremental execution against an active order resting in the market. It updates `net_position` and adjusts `order.leaves_qty`. The order remains open in `open_orders` (so future fills can be tracked) unless `leaves_qty` drops to 0.
+   - **`Filled`:** Represents a terminal, 100% complete execution. It immediately removes (`pop`) the order from `open_orders` and updates `net_position` by whatever shares remained. Removing the order automatically drops its working sell commitment to zero.
 
-9. **Two independent borrow checks** (as stated in the spec):
-   - Combined working-short qty must not exceed `borrow`.
-   - Position after *all* sells must not drop below `-borrow`.
-   If either is violated, the order is `Uncovered`.
+9. **Why `leaves_qty` is Authoritative over `qty` (`qty != fill_amount`):**  
+   In real-world UDP market data feeds (and specifically in this assignment's dataset), network packets can arrive out of chronological order or use cumulative reporting. Calculating traded amounts from authoritative book balance (`fill_amount = order.leaves_qty - new_leaves`) rather than trusting `row["qty"]` makes the engine immune to out-of-order packet delays and prevents double-counting inventory.
 
-10. **`Filled` events for untracked orders** (e.g. ManualTrade workflows
-    submitted outside our `New` event stream) are handled as instant fills —
-    position is updated by the event's `qty`.
+10. **Two independent borrow checks** (as stated in the spec):
+    - Combined working-short qty must not exceed `borrow`.
+    - Position after *all* sells must not drop below `-borrow`.
+    If either is violated, the order is flagged `Uncovered`.
 
 ---
 
-## What I'd add with more time
+## What I'd Add with More Time
 
-- **Structured logging** (JSON lines) instead of plain `print()`, so alerts
-  can be ingested by a downstream system.
-- **More edge-case tests:** amend chains (A → B → C), partial fills followed
-  by amends, and symbols with negative `init_position`.
-- **Performance:** for 130 k rows the current approach (plain dicts, O(n) scans
-  for working qty) is fine, but at much larger scale I'd maintain running totals
-  for `working_long_sell_qty` and `working_short_sell_qty` instead of
-  recomputing from the orders dict.
-- **Input validation:** stricter parsing of timestamps, detection of duplicate
-  `client_order_id` values, and graceful handling of malformed rows.
+- **Performance optimization:** For 130k rows, the current O(n) scans across active orders for working sell quantities take only ~0.3 seconds. At multi-million row scale, I would maintain O(1) running totals for `working_long_sell_qty` and `working_short_sell_qty`.
+- **Input validation & schema checks:** Stricter parsing of timestamps, detection of duplicate `client_order_id` values across different symbols, and graceful error handling for malformed CSV rows.

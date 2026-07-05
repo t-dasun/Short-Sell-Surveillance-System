@@ -74,6 +74,75 @@ def test_fill_removes_order_when_fully_filled():
     assert state.net_position == 1500  # 1000 + 500
 
 
+def test_fill_and_filled_on_sell_orders():
+    """Test both Fill (partial) and Filled (terminal) on Sell orders, checking inventory and working qty."""
+    engine = _engine(init_pos=1000)
+
+    # Submit a Long Sell order for 500 shares.
+    engine.process_event(_row(event="New", client_order_id="S1", side="Sell", qty="500", sell_flag="Long"))
+    engine.process_event(
+        _row(event="NewAccept", client_order_id="S1", side="Sell", qty="500", leaves_qty="500", sell_flag="Long")
+    )
+
+    state = engine.states["TEST"]
+    assert state.working_long_sell_qty == 500
+    assert state.net_position == 1000
+
+    # 1. Partial Fill of 200 shares (leaves_qty becomes 300).
+    engine.process_event(
+        _row(event="Fill", client_order_id="S1", side="Sell", qty="200", leaves_qty="300")
+    )
+    assert state.net_position == 800  # 1000 - 200
+    assert state.working_long_sell_qty == 300  # Reduced working sell commitment!
+    assert "S1" in state.open_orders  # Still open
+
+    # 2. Terminal Filled event (completes the remaining 300 shares).
+    engine.process_event(
+        _row(event="Filled", client_order_id="S1", side="Sell", qty="300")
+    )
+    assert state.net_position == 500  # 800 - 300
+    assert state.working_long_sell_qty == 0  # Order removed, working qty is 0!
+    assert "S1" not in state.open_orders
+
+
+def test_filled_on_buy_orders():
+    """Test terminal Filled event on Buy orders immediately removes order and updates position."""
+    engine = _engine(init_pos=0)
+
+    engine.process_event(_row(event="New", client_order_id="B1", side="Buy", qty="400"))
+    engine.process_event(
+        _row(event="NewAccept", client_order_id="B1", side="Buy", qty="400", leaves_qty="400")
+    )
+
+    # Terminal Filled event arrives.
+    engine.process_event(_row(event="Filled", client_order_id="B1", side="Buy", qty="400"))
+
+    state = engine.states["TEST"]
+    assert state.net_position == 400
+    assert "B1" not in state.open_orders
+
+
+def test_fill_qty_different_from_leaves_qty_authoritative():
+    """Verify that when row['qty'] != fill_amount (due to out-of-order packets), leaves_qty is authoritative."""
+    engine = _engine(init_pos=0)
+
+    # Order created with 4000 shares.
+    engine.process_event(_row(event="New", client_order_id="B1", side="Buy", qty="4000"))
+    engine.process_event(
+        _row(event="NewAccept", client_order_id="B1", side="Buy", qty="4000", leaves_qty="4000")
+    )
+
+    # Simulate out-of-order packet: row['qty'] says 900, but leaves_qty says 2400 (meaning 1600 traded!).
+    engine.process_event(
+        _row(event="Fill", client_order_id="B1", side="Buy", qty="900", leaves_qty="2400")
+    )
+
+    state = engine.states["TEST"]
+    # Net position should increase by (4000 - 2400) = 1600, NOT by qty=900!
+    assert state.net_position == 1600
+    assert state.open_orders["B1"].leaves_qty == 2400
+
+
 # ── cancel tests ──────────────────────────────────────────────────
 
 
