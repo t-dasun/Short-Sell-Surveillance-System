@@ -97,7 +97,7 @@ The project implements Python's built-in `logging` module with a **hierarchical 
 
 ---
 
-## What I'd Add with More Time
+## What I'd Add with More Perfomence
 
 - **Performance optimization:** For 130k rows, the current O(n) scans across active orders for working sell quantities take only ~0.3 seconds. At multi-million row scale, I would maintain O(1) running totals for `working_long_sell_qty` and `working_short_sell_qty`.
 - **Input validation & schema checks:** Stricter parsing of timestamps, detection of duplicate `client_order_id` values across different symbols, and graceful error handling for malformed CSV rows.
