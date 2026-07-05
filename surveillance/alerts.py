@@ -1,9 +1,12 @@
-"""Alert formatting.
+"""Alert formatting and logging.
 
-Simple, human-readable output for each mis-flagged sell order.
+Simple, human-readable output and logging for each mis-flagged sell order.
 """
 
+import logging
 from .models import Alert
+
+logger = logging.getLogger("surveillance.alerts")
 
 
 def format_alert(alert: Alert) -> str:
@@ -23,3 +26,8 @@ def format_alert(alert: Alert) -> str:
         f"borrow={alert.borrow}  "
         f"order_qty={alert.order_qty}"
     )
+
+
+def log_alert(alert: Alert) -> None:
+    """Log a mis-flagged sell order alert using the surveillance logger."""
+    logger.warning(format_alert(alert))

@@ -16,10 +16,14 @@ The engine does NOT decide what the correct flag is, that logic
 lives entirely in ``flag_rules.determine_expected_flag``.
 """
 
+import logging
 from typing import Dict, Optional, Tuple
 
+from .alerts import log_alert
 from .flag_rules import determine_expected_flag
 from .models import Alert, Order, SymbolState
+
+logger = logging.getLogger("surveillance.engine")
 
 
 class SurveillanceEngine:
@@ -40,6 +44,7 @@ class SurveillanceEngine:
                 net_position=init_pos,
                 borrow=borrow,
             )
+        logger.info("Initialized SurveillanceEngine with %d reference symbols.", len(self.states))
 
     # ── public interface ───────────────────────────────────────────
 
@@ -89,9 +94,11 @@ class SurveillanceEngine:
             order_qty=order_qty,
         )
         if expected == sell_flag:
+            logger.debug("Sell order %s for %s flagged correctly as %s.",
+                client_order_id, state.symbol, sell_flag)
             return None
 
-        return Alert(
+        alert = Alert(
             symbol=state.symbol,
             client_order_id=client_order_id,
             actual_flag=sell_flag,
@@ -102,6 +109,8 @@ class SurveillanceEngine:
             borrow=state.borrow,
             order_qty=order_qty,
         )
+        log_alert(alert)
+        return alert
 
     @staticmethod
     def _make_order(row: Dict[str, str], leaves_qty: int) -> Order:
@@ -210,6 +219,7 @@ class SurveillanceEngine:
         order = state.open_orders.get(client_order_id)
 
         if order is not None:
+            qty = int(row["qty"]) if row.get("qty", "").strip() else 0
             new_leaves_str = row.get("leaves_qty", "").strip()
             new_leaves = int(new_leaves_str) if new_leaves_str else 0
             fill_amount = order.leaves_qty - new_leaves
@@ -218,6 +228,13 @@ class SurveillanceEngine:
                 state.net_position += fill_amount
             else:
                 state.net_position -= fill_amount
+
+            # error check: csv qty should match the computed fill amount
+            if qty != fill_amount:
+                logger.debug(
+                    "Fill event for order %s: qty=%d does not match computed fill=%d",
+                    client_order_id, qty, fill_amount
+                )
 
             order.leaves_qty = new_leaves
             if new_leaves <= 0:
@@ -228,16 +245,15 @@ class SurveillanceEngine:
     def _handle_filled(self, row: Dict[str, str]) -> Optional[Alert]:
         """Order fully filled (terminal event).
 
-        The order may have been submitted via a separate workflow
-        (e.g. ManualTrade) and may reference an earlier order via
-        ``orig_client_order_id``.
+        Reference an earlier order via ``orig_client_order_id``.
         """
         state = self._get_state(row["symbol"])
         if state is None:
             return None
         client_id = row["client_order_id"]
         orig_id = row.get("orig_client_order_id", "").strip()
-
+        qty = int(row["qty"]) if row.get("qty", "").strip() else 0
+        
         # Find the order under either key.
         order_key = None
         if orig_id and orig_id in state.open_orders:
@@ -246,15 +262,23 @@ class SurveillanceEngine:
             order_key = client_id
 
         if order_key is not None:
+            # remove the order from the open_orders dict and adjust net_position
             order = state.open_orders.pop(order_key)
             fill_amount = order.leaves_qty
             if order.side == "Buy":
                 state.net_position += fill_amount
             else:
                 state.net_position -= fill_amount
+
+            # error check: csv qty should match the computed fill amount
+            if qty != fill_amount:
+                logger.debug(
+                    "Fill event for order %s: qty=%d does not match computed fill=%d",
+                    client_id, qty, fill_amount
+                )
+
         else:
             # Order not previously tracked — treat as instant fill.
-            qty = int(row["qty"]) if row.get("qty", "").strip() else 0
             if row["side"] == "Buy":
                 state.net_position += qty
             else:
