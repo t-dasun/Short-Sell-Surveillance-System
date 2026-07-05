@@ -5,18 +5,18 @@ state and delegating flag decisions to ``flag_rules``.
 
 Responsibilities
 ----------------
-* Track open orders (add on New/Amend, remove on Cancel/Cancelled/full Fill).
+* Track open orders (add on New/Amend, remove on Cancel/Cancelled/Fiiled/Fill).
 * Handle both ``Fill`` and ``Filled`` events because the sample feed contains both forms.
 * Treat both ``Cancel`` and ``Cancelled`` as terminal cancellation events for this assignment.
 * Update ``net_position`` on fills.
 * Call ``determine_expected_flag`` for every Sell ``New`` and ``Amend``.
-* Return an ``Alert`` whenever the actual flag ≠ expected flag.
+* Return an ``Alert`` whenever the actual flag != expected flag.
 
-The engine does NOT decide what the correct flag is — that logic
+The engine does NOT decide what the correct flag is, that logic
 lives entirely in ``flag_rules.determine_expected_flag``.
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from .flag_rules import determine_expected_flag
 from .models import Alert, Order, SymbolState
@@ -45,28 +45,34 @@ class SurveillanceEngine:
 
     def process_event(self, row: Dict[str, str]) -> Optional[Alert]:
         """Process a single event row and return an Alert (or None)."""
-        handler = {
-            "New": self._handle_new,
-            "NewAccept": self._handle_new_accept,
-            "Amend": self._handle_amend,
-            "AmendConfirm": self._handle_amend_confirm,
-            "Fill": self._handle_fill,
-            "Filled": self._handle_filled,
-            "Cancel": self._handle_cancel,
-            "Cancelled": self._handle_cancelled,
-        }.get(row["event"])
+        match row["event"]:
+            case "New":
+                return self._handle_new(row)
+            case "NewAccept":
+                return self._handle_new_accept(row)
+            case "Amend":
+                return self._handle_amend(row)
+            case "AmendConfirm":
+                return self._handle_amend_confirm(row)
+            case "Fill":
+                return self._handle_fill(row)
+            case "Filled":
+                return self._handle_filled(row)
+            case "Cancel":
+                return self._handle_cancel(row)
+            case "Cancelled":
+                return self._handle_cancelled(row)
+            case _:
+                return None  # unknown event type — skip
 
-        if handler is None:
-            return None  # unknown event type — skip
-        return handler(row)
-
-    # ── helpers ────────────────────────────────────────────────────
+    # -- helpers --------------------------------------------------------------
 
     def _get_state(self, symbol: str) -> Optional[SymbolState]:
         """Return state for symbols present in ref_data.
 
         The assignment says symbols missing from ref_data should be skipped,
         so the engine does not create default state for unknown symbols.
+        If symbol is not in ref_data, return None and the caller will skip it.
         """
         return self.states.get(symbol)
 
@@ -112,7 +118,7 @@ class SurveillanceEngine:
             source=row.get("source", ""),
         )
 
-    # ── event handlers ─────────────────────────────────────────────
+    # -- event handlers -------------------------------------------------------
 
     def _handle_new(self, row: Dict[str, str]) -> Optional[Alert]:
         """New order submitted.

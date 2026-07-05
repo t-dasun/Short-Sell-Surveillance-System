@@ -16,7 +16,7 @@ def format_alert(alert: Alert) -> str:
     return (
         f"ALERT  symbol={alert.symbol}  "
         f"order={alert.client_order_id}  "
-        f"flag={alert.actual_flag} → expected={alert.expected_flag}  |  "
+        f"flag={alert.actual_flag} -> expected={alert.expected_flag}  |  "
         f"net_pos={alert.net_position}  "
         f"wk_long_sell={alert.working_long_sell_qty}  "
         f"wk_short_sell={alert.working_short_sell_qty}  "

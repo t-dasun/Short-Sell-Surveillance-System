@@ -8,7 +8,7 @@ Two public functions:
 import csv
 from typing import Dict, List, Tuple
 
-
+# Reads ref_data.csv, returning a dict mapping symbol → (init_position, borrow).
 def load_ref_data(filepath: str) -> Dict[str, Tuple[int, int]]:
     """Read ref_data.csv.
 
@@ -23,7 +23,7 @@ def load_ref_data(filepath: str) -> Dict[str, Tuple[int, int]]:
             ref[symbol] = (init_position, borrow)
     return ref
 
-
+# Reads orders.csv, returning rows in file order as a list of dicts.
 def load_orders(filepath: str) -> List[Dict[str, str]]:
     """Read orders.csv, returning rows in file order.
 
