@@ -26,6 +26,7 @@ By default (`python3 main.py`), the engine prints formatted alerts and execution
 
 **Optional CLI Arguments:**
 - `--demo`: Enable live terminal dashboard mode. Displays a clean, formatted terminal box (Box 1) with system statistics and real-time alerts, while saving all 132,117 event processing details and state snapshots to a separate log file (`event_details.log`).
+- `--sort-by-timestamp`: Stable-sort all events by their timestamp column before processing. Events sharing the same timestamp keep their original file order (Python's Timsort is stable). Off by default.
 - `--log-file <path>`: Specify a custom path to save output logs (default: `surveillance_alerts.log`).
 
 ### 3. Running Automated Tests
@@ -68,8 +69,8 @@ The project implements Python's built-in `logging` module with a **hierarchical 
 
 ## Key Financial Engineering & Architecture Assumptions
 
-1. **Events are processed in file order.**  
-   The CSV is assumed to be sorted chronologically.
+1. **Events are processed in file order (by default).**  
+   The CSV is assumed to be sorted chronologically. An optional `--sort-by-timestamp` flag can stable-sort events before processing. In the sample dataset, 7 of 132,117 rows have timestamp anomalies — 4 are trading-session resets (timestamp jumps from ~59:59 back to ~00:00) and the remaining are minor (~10 second) backward jumps.
 
 2. **`sell_flag` whitespace is normalised.**  
    The data contains `'Long '` (trailing space) which is cleanly stripped to `'Long'`.
@@ -103,7 +104,18 @@ The project implements Python's built-in `logging` module with a **hierarchical 
 
 ---
 
-## What I'd Add with More Performance
+## Why O(n) Over O(1) for Working Quantities
 
-- **Performance optimization:** For 130k rows, the current O(n) scans across active orders for working sell quantities take only ~0.3 seconds. At multi-million row scale, I would maintain O(1) running totals for `working_long_sell_qty` and `working_short_sell_qty`. However, in real-world market data feeds where UDP packets can arrive out of order or with timestamp discrepancies, O(1) running counters can drift over time. Maintaining O(n) property-based calculations across active orders ensures state resilience and correctness without risk of drift.
-- **Input validation & schema checks:** Stricter parsing of timestamps, detection of duplicate `client_order_id` values across different symbols, and graceful error handling for malformed CSV rows.
+- ForClean implimentaion and avoid complexity.
+- `working_long_sell_qty` and `working_short_sell_qty` are `@property` scans over `open_orders`, not running counters.
+- A property scan is always correct if the dict is correct — it can't drift.
+- O(1) counters need perfect inc/dec across 6 handlers. One missed decrement = permanent silent drift for the rest of 132k rows.
+- Even with `--sort-by-timestamp`, this doesn't change — timestamp order fixes event sequence, not implementation bugs.
+- Total scan time for 132k rows: ~0.3s. No performance problem to solve.
+- At multi-million row scale, I'd use O(1) counters with periodic reconciliation against the O(n) scan.
+
+---
+
+## Future Improvements
+
+- Input validation & schema checks for duplicate order IDs and malformed CSV rows.

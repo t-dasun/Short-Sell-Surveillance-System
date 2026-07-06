@@ -50,6 +50,12 @@ def main() -> None:
         action="store_true",
         help="Enable terminal dashboard (Box 1: header + alerts).",
     )
+    parser.add_argument(
+        "--sort-by-timestamp",
+        action="store_true",
+        help="Stable-sort events by timestamp before processing. "
+             "Same-timestamp events keep their original file order.",
+    )
     args = parser.parse_args()
 
     base = Path(__file__).resolve().parent
@@ -74,7 +80,7 @@ def main() -> None:
     orders_path = base / "orders.csv"
 
     ref_data = load_ref_data(str(ref_path))
-    orders = load_orders(str(orders_path))
+    orders = load_orders(str(orders_path), sort_by_timestamp=args.sort_by_timestamp)
 
     engine = SurveillanceEngine(ref_data)
 
