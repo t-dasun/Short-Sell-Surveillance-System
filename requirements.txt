@@ -1,5 +1,5 @@
 # Short-Sell Surveillance System
-# Required Python Version: >= 3.8 (Tested on Python 3.10 / 3.12)
+# Required Python Version: >= 3.10 (Tested on Python 3.10 / 3.12)
 #
 # NOTE: The core surveillance engine (main.py, surveillance/) uses 100%
 # Python Standard Library modules (csv, dataclasses, logging, pathlib, argparse, typing).

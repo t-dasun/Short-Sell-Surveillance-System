@@ -7,7 +7,7 @@ A professional, modular Python surveillance engine that replays a day's order ev
 ## How to Run & Environment Setup
 
 ### 1. Environment Requirements
-- **Python Version:** `>= 3.8` (Tested on Python 3.10 and 3.12).
+- **Python Version:** `>= 3.10` (Tested on Python 3.10 and 3.12; uses structural pattern matching `match/case`).
 - **Core Engine:** Uses **100% Python Standard Library** (`csv`, `dataclasses`, `logging`, `pathlib`, `argparse`, `typing`). **No external packages or third-party libraries are required to run `main.py`!**
 - **Automated Tests:** See [requirements.txt](file:///home/dasun/Documents/projects/9miles-takehome-assigment/Short-Sell-Surveillance-System/requirements.txt) for the test dependency (`pytest`).
 

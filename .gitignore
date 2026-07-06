@@ -13,7 +13,12 @@ __pycache__/
 *~
 .~lock.*
 
-# Virtual environments
+# Virtual environments & local env
 venv/
 env/
 .env
+
+# Log files & outputs
+*.log
+surveillance_alerts.log
+event_details.log

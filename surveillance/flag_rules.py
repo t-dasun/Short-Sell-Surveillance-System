@@ -3,7 +3,7 @@
 This module answers exactly one question:
     "Given the current symbol state, what flag should this sell order have?"
 
-This module does not the mutate state.
+This module does not mutate state.
 The engine calls this function, compares the result with the
 actual flag, and raises an alert if they differ.
 

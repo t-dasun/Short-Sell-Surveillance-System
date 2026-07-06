@@ -5,7 +5,7 @@ state and delegating flag decisions to ``flag_rules``.
 
 Responsibilities
 ----------------
-* Track open orders (add on New/Amend, remove on Cancel/Cancelled/Fiiled/Fill).
+* Track open orders (add on New/Amend, remove on Cancel/Cancelled/Filled/Fill).
 * Handle both ``Fill`` and ``Filled`` events because the sample feed contains both forms.
 * Treat both ``Cancel`` and ``Cancelled`` as terminal cancellation events for this assignment.
 * Update ``net_position`` on fills.
