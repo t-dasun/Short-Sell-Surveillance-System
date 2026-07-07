@@ -52,6 +52,7 @@ surveillance/
 tests/
   test_flag_rules.py   Unit tests for the stateless flag decision logic
   test_engine.py       Unit tests for state mutations, execution types, and alert generation
+  test_loader.py       Unit test for csv loader  
 main.py           Entry point & root logging configuration
 requirements.txt  Project dependencies and Python version requirements
 ```
